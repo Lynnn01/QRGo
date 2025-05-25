@@ -6,26 +6,53 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 type Model struct {
 	Input         string
+	Loading       bool
+	LoadingStep   int
 	ShowResult    bool
 	ResultMessage string
-	ShowMenu      bool
 	MenuCursor    int
 	MenuOptions   []string
 }
 
+// Messages สำหรับ loading
+type loadingMsg int
+type doneMsg string
+
 func NewModel() Model {
 	return Model{
 		Input:       "",
+		Loading:     false,
+		LoadingStep: 0,
 		ShowResult:  false,
-		ShowMenu:    false,
 		MenuCursor:  0,
 		MenuOptions: []string{"🔄 เริ่มใหม่", "❌ ออก"},
+	}
+}
+
+// Loading command
+func loadingTick() tea.Cmd {
+	return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+		return loadingMsg(1)
+	})
+}
+
+// Generate QR command
+func generateQR(input string) tea.Cmd {
+	return func() tea.Msg {
+		time.Sleep(3 * time.Second) // จำลอง processing 3 วิ
+		err := CreateAndSaveQR(input)
+		if err != nil {
+			return doneMsg(fmt.Sprintf("❌ %v", err))
+		}
+		fileName := GenerateFileName(input)
+		return doneMsg(fmt.Sprintf("🎉 QR CODE GENERATED\n📁 FILE: qrcode/%s.png\n📋 IMAGE COPIED TO CLIPBOARD", fileName))
 	}
 }
 
@@ -35,9 +62,26 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	
+	// Loading animation
+	case loadingMsg:
+		if m.Loading {
+			m.LoadingStep = (m.LoadingStep + 1) % 30 // 30 steps animation
+			return m, loadingTick()
+		}
+		return m, nil
+	
+	// Generation complete
+	case doneMsg:
+		m.Loading = false
+		m.LoadingStep = 0
+		m.ResultMessage = string(msg)
+		m.ShowResult = true
+		return m, nil
+
 	case tea.KeyMsg:
-		// หน้าเมนูหลังเจน
-		if m.ShowMenu {
+		// หน้าผลลัพธ์พร้อมเมนู
+		if m.ShowResult {
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
@@ -53,11 +97,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch m.MenuCursor {
 				case 0: // เริ่มใหม่
 					clearScreen()
-					m.Input = ""
-					m.ShowResult = false
-					m.ShowMenu = false
-					m.MenuCursor = 0
-					m.ResultMessage = ""
+					m = NewModel() // Reset ทุกอย่าง
 					return m, nil
 				case 1: // ออก
 					return m, tea.Quit
@@ -66,39 +106,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// หน้าผลลัพธ์
-		if m.ShowResult {
-			m.ShowResult = false
-			m.ShowMenu = true
-			return m, nil
-		}
+		// หน้า input (ถ้าไม่ loading)
+		if !m.Loading {
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
 
-		// หน้า input
-		switch msg.String() {
-		case "ctrl+c":
-			return m, tea.Quit
-
-		case "enter":
-			if strings.TrimSpace(m.Input) != "" {
-				err := CreateAndSaveQR(m.Input)
-				if err != nil {
-					m.ResultMessage = fmt.Sprintf("❌ %v", err)
-				} else {
-					fileName := GenerateFileName(m.Input)
-					m.ResultMessage = fmt.Sprintf("🎉 สร้าง QR Code สำเร็จ!\n📁 ไฟล์: qrcode/%s.png\n📋 รูปถูก copy เข้า clipboard แล้ว", fileName)
+			case "enter":
+				if strings.TrimSpace(m.Input) != "" {
+					m.Loading = true
+					m.LoadingStep = 0
+					return m, tea.Batch(loadingTick(), generateQR(m.Input))
 				}
-				m.ShowResult = true
-				return m, nil
-			}
 
-		case "backspace":
-			if len(m.Input) > 0 {
-				m.Input = m.Input[:len(m.Input)-1]
-			}
+			case "backspace":
+				if len(m.Input) > 0 {
+					m.Input = m.Input[:len(m.Input)-1]
+				}
 
-		default:
-			if len(msg.String()) == 1 {
-				m.Input += msg.String()
+			default:
+				if len(msg.String()) == 1 {
+					m.Input += msg.String()
+				}
 			}
 		}
 	}
@@ -106,16 +135,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	if m.ShowMenu {
-		return RenderMenu(m.MenuOptions, m.MenuCursor)
+	if m.Loading {
+		return RenderLoading(m.LoadingStep)
 	}
 	if m.ShowResult {
-		return RenderResult(m.ResultMessage)
+		return RenderResultWithMenu(m.ResultMessage, m.MenuOptions, m.MenuCursor)
 	}
 	return RenderUI(m.Input)
 }
 
-// Clear screen ตาม OS
 func clearScreen() {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {

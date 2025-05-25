@@ -3,26 +3,20 @@ package main
 import (
 	"fmt"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 func RenderUI(input string) string {
 	var s strings.Builder
 
-	// Header แบบเท่
 	s.WriteString(TitleStyle.Render(" ⚡ QR GENERATOR "))
 	s.WriteString("\n\n")
 
-	// Status line
 	s.WriteString(StatusStyle.Render("⚙️  INPUT MODE"))
 	s.WriteString("\n\n")
 
-	// Input label
-	s.WriteString(LabelStyle.Render("→ ENTER TEXT OR URL"))
+	s.WriteString(LabelStyle.Render("▶ ENTER TEXT OR URL"))
 	s.WriteString("\n\n")
 
-	// Input box
 	displayText := input
 	if displayText == "" {
 		displayText = HintStyle.Render("type here...")
@@ -33,20 +27,52 @@ func RenderUI(input string) string {
 	s.WriteString(BoxStyle.Render(displayText))
 	s.WriteString("\n")
 
-	// Controls
 	s.WriteString(HintStyle.Render("ENTER → generate • BACKSPACE → delete • CTRL+C → exit"))
 
 	return s.String()
 }
 
-func RenderResult(message string) string {
+func RenderLoading(step int) string {
 	var s strings.Builder
 
-	// Header
-	s.WriteString(TitleStyle.Render(" ✨ QR GENERATED "))
+	s.WriteString(TitleStyle.Render(" ⚡ QR GENERATOR "))
 	s.WriteString("\n\n")
 
-	// Status
+	s.WriteString(StatusStyle.Render("🔥 GENERATING QR CODE"))
+	s.WriteString("\n\n")
+
+	// Animated spinner
+	spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	spinner := spinners[step%len(spinners)]
+	
+	s.WriteString(LoadingStyle.Render(fmt.Sprintf("%s PROCESSING...", spinner)))
+	s.WriteString("\n\n")
+
+	// Progress bar
+	progress := (step % 30) * 100 / 30
+	progressBar := ""
+	for i := 0; i < 30; i++ {
+		if i < (step%30) {
+			progressBar += "█"
+		} else {
+			progressBar += "░"
+		}
+	}
+
+	s.WriteString(ProgressStyle.Render(fmt.Sprintf("[%s] %d%%", progressBar, progress)))
+	s.WriteString("\n\n")
+
+	s.WriteString(HintStyle.Render("⏳ Please wait... Creating your QR code"))
+
+	return s.String()
+}
+
+func RenderResultWithMenu(message string, options []string, cursor int) string {
+	var s strings.Builder
+
+	s.WriteString(TitleStyle.Render(" ✨ COMPLETED "))
+	s.WriteString("\n\n")
+
 	s.WriteString(StatusStyle.Render("🎯 SUCCESS"))
 	s.WriteString("\n\n")
 
@@ -54,24 +80,14 @@ func RenderResult(message string) string {
 	s.WriteString(SuccessStyle.Render(message))
 	s.WriteString("\n\n")
 
-	// Instructions
-	s.WriteString(HintStyle.Render("ANY KEY → continue"))
-
-	return s.String()
-}
-
-func RenderMenu(options []string, cursor int) string {
-	var s strings.Builder
-
-	// Header
-	s.WriteString(TitleStyle.Render(" 🎯 CHOOSE ACTION "))
+	// Separator
+	s.WriteString(strings.Repeat("▔", 50))
 	s.WriteString("\n\n")
 
-	// Status
-	s.WriteString(StatusStyle.Render("📋 WHAT'S NEXT?"))
+	// Menu
+	s.WriteString(LabelStyle.Render("▶ WHAT'S NEXT?"))
 	s.WriteString("\n\n")
 
-	// Menu options
 	for i, option := range options {
 		pointer := "  "
 		if cursor == i {
@@ -80,9 +96,9 @@ func RenderMenu(options []string, cursor int) string {
 
 		optionText := option
 		if cursor == i {
-			optionText = lipgloss.NewStyle().Foreground(lipgloss.Color("#00D4AA")).Bold(true).Render(option)
+			optionText = SelectedMenuStyle.Render(" " + option + " ")
 		} else {
-			optionText = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render(option)
+			optionText = MenuStyle.Render(option)
 		}
 
 		s.WriteString(fmt.Sprintf("%s%s\n", pointer, optionText))
